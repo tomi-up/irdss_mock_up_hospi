@@ -29,28 +29,16 @@ if (file_exists($vendorAutoload)) {
     }
 }
 
-// 2. Extract X-API-Key header or logged-in hospital session key
-$headers = function_exists('getallheaders') ? getallheaders() : [];
-$apiKey = '';
+require_once __DIR__ . '/crypto_helper.php';
 
-if (!empty($_SERVER['HTTP_X_API_KEY'])) {
-    $apiKey = trim($_SERVER['HTTP_X_API_KEY']);
-} elseif (!empty($headers['X-API-Key'])) {
-    $apiKey = trim($headers['X-API-Key']);
-} elseif (!empty($headers['x-api-key'])) {
-    $apiKey = trim($headers['x-api-key']);
-}
-
-$loggedInHospital = getLoggedInHospital();
-if (empty($apiKey) && $loggedInHospital && !empty($loggedInHospital['api_key'])) {
-    $apiKey = $loggedInHospital['api_key'];
-}
-
-if (empty($apiKey)) {
+// Check logged in user session
+$user = getLoggedInUser();
+if (!$user) {
     sendJsonResponse([
-        'detail' => 'Unauthorized. Missing X-API-Key header.'
+        'detail' => 'Unauthorized. Please log in again.'
     ], 401);
 }
+requireRole(['doctor', 'nurse']);
 
 // 3. Query target URI path on central FastAPI backend
 $requestUri = $_SERVER['REQUEST_URI'] ?? '';
@@ -84,14 +72,13 @@ foreach ($portsToTry as $port) {
 
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
-    $requestHeaders = [
-        'Content-Type: application/json',
-        'Accept: application/json',
-        'Connection: close',
-        'X-API-Key: ' . $apiKey
-    ];
+    // Generate RSA-2048 Signed Headers with 3-Layer Authentication Context
+    $signedHeaders = signRequestHeaders($method, $path, $rawInput, $user);
+    $signedHeaders[] = 'Accept: application/json';
+    $signedHeaders[] = 'Connection: close';
 
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $requestHeaders);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, $signedHeaders);
+
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 1);
     curl_setopt($ch, CURLOPT_TIMEOUT, 3);
 

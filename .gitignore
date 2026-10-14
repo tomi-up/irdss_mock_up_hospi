@@ -1,4 +1,8 @@
-database
+database/*
+!database/schema.sql
+!database/upgrade_*.sql
 vendor
 
 .env
+storage/keys/*.pem
+storage/patient_transfer/
